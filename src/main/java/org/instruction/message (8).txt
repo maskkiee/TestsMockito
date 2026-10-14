@@ -1,0 +1,193 @@
+# Praca domowa: Testowanie z Mockito
+
+## Ćwiczenie 7a: Koszyk z rabatem (podstawowe mockowanie)
+
+**Czego się nauczysz:** `@Mock`, `@InjectMocks`, `when/thenReturn`, `verify`, `verifyNoInteractions`
+
+**Scenariusz:** System koszyka zakupowego oblicza cenę końcową z rabatem. `ShoppingCartService` używa `ProductRepository` do pobrania cen i `DiscountService` do pobrania rabatu klienta. Obie zależności to interfejsy bez implementacji, więc w testach musisz je zastąpić mockami.
+
+**Twoje zadanie:** przepisz poniższy kod produkcyjny do projektu i napisz klasę testową `ShoppingCartServiceTest`, która sprawdza metodę `calculateTotal()`. Nie zmieniaj kodu produkcyjnego.
+
+### Zależności (Maven)
+
+Do `pom.xml` dodaj w zakresie `test`:
+- `org.junit.jupiter:junit-jupiter`
+- `org.mockito:mockito-junit-jupiter`
+- `org.assertj:assertj-core`
+
+### Struktura plików
+
+```
+src/
+├── main/java/com/example/cart/
+│   ├── Product.java
+│   ├── CartItem.java
+│   ├── ProductRepository.java
+│   ├── DiscountService.java
+│   ├── ProductNotFoundException.java
+│   └── ShoppingCartService.java
+└── test/java/com/example/cart/
+    └── ShoppingCartServiceTest.java   <- to piszesz Ty
+```
+
+---
+
+
+### Product.java
+
+```java
+package com.example.cart;
+
+public class Product {
+
+    private final String id;
+    private final String name;
+    private final double price;
+
+    public Product(String id, String name, double price) {
+        this.id = id;
+        this.name = name;
+        this.price = price;
+    }
+
+    public String getId() { return id; }
+    public String getName() { return name; }
+    public double getPrice() { return price; }
+}
+```
+
+---
+
+### CartItem.java
+
+```java
+package com.example.cart;
+
+public class CartItem {
+
+    private final String productId;
+    private final int quantity;
+
+    public CartItem(String productId, int quantity) {
+        this.productId = productId;
+        this.quantity = quantity;
+    }
+
+    public String getProductId() { return productId; }
+    public int getQuantity() { return quantity; }
+}
+```
+
+---
+
+### ProductRepository.java
+
+```java
+package com.example.cart;
+
+import java.util.Optional;
+
+public interface ProductRepository {
+
+    Optional<Product> findById(String productId);
+}
+```
+
+---
+
+### DiscountService.java
+
+```java
+package com.example.cart;
+
+public interface DiscountService {
+
+    /**
+     * Zwraca procentowy rabat dla klienta (0.0 - 1.0).
+     * Np. 0.1 oznacza 10% rabatu.
+     */
+    double getDiscountForCustomer(String customerId);
+}
+```
+
+---
+
+### ProductNotFoundException.java
+
+```java
+package com.example.cart;
+
+public class ProductNotFoundException extends RuntimeException {
+
+    private final String productId;
+
+    public ProductNotFoundException(String productId) {
+        super("Produkt nie znaleziony: " + productId);
+        this.productId = productId;
+    }
+
+    public String getProductId() { return productId; }
+}
+```
+
+---
+
+### ShoppingCartService.java (klasa, którą testujesz)
+
+```java
+package com.example.cart;
+
+import java.util.List;
+
+public class ShoppingCartService {
+
+    private final ProductRepository productRepository;
+    private final DiscountService discountService;
+
+    public ShoppingCartService(ProductRepository productRepository,
+                               DiscountService discountService) {
+        this.productRepository = productRepository;
+        this.discountService = discountService;
+    }
+
+    /**
+     * Oblicza końcową cenę koszyka po rabacie.
+     */
+    public double calculateTotal(String customerId, List<CartItem> items) {
+        if (items == null || items.isEmpty()) {
+            throw new IllegalArgumentException("Koszyk nie może być pusty");
+        }
+
+        double subtotal = 0.0;
+        for (CartItem item : items) {
+            Product product = productRepository.findById(item.getProductId())
+                .orElseThrow(() -> new ProductNotFoundException(item.getProductId()));
+            subtotal += product.getPrice() * item.getQuantity();
+        }
+
+        double discount = discountService.getDiscountForCustomer(customerId);
+        return subtotal * (1.0 - discount);
+    }
+}
+```
+
+---
+
+## Jakich testów oczekujemy
+
+Klasa `ShoppingCartServiceTest` z `@ExtendWith(MockitoExtension.class)` i `@DisplayName("ShoppingCartService - testy mockowania")`. Mocki: `ProductRepository` i `DiscountService` (`@Mock`), testowany obiekt: `ShoppingCartService` (`@InjectMocks`).
+
+W klasie zagnieżdżonej `@Nested` z `@DisplayName("calculateTotal()")` napisz testy:
+
+1. **Powinien obliczyć cenę dla jednego produktu bez rabatu**
+2. **Powinien zastosować 10% rabatu dla klienta VIP**
+3. **Powinien obliczyć cenę dla wielu produktów**
+4. **Powinien rzucić wyjątek dla pustego koszyka**
+5. **Powinien rzucić wyjątek gdy produkt nie istnieje**
+
+Wskazówki:
+- przy cenach po rabacie porównuj z tolerancją (`isCloseTo(..., within(0.01))`), bo `double` nie liczy dokładnie;
+- w teście pustego koszyka sprawdź, że żaden mock nie został użyty (`verifyNoInteractions`);
+- w teście brakującego produktu mock repozytorium ma zwrócić `Optional.empty()`, a komunikat wyjątku ma zawierać id produktu.
+
+---
